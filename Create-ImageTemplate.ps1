@@ -3,7 +3,7 @@
 $existingGalleryName     = "Citrix_Gallery"          # Exact gallery name (include space if present)
 $existingImageDefName    = "Win11_Optimized_Fslogix" # Exact image definition name that contains version 1.2.0
 $sourceImageVersion      = "1.2.0"                   # Source version (already has VDA)
-$galleryResourceGroup    = "RG-Citrix-Images"           # Resource group that contains the gallery
+$galleryResourceGroup    = "RG-Citrix-Images"        # Resource group that contains the gallery
 
 
 $imageResourceGroup = "CitrixImageBuilderRG"
