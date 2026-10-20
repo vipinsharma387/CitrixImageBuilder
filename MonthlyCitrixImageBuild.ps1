@@ -71,25 +71,24 @@ Write-Host "Network ready."
 "Network ready" | Out-File $LogFile -Append
 
 # ------------------------------------------------------------
-# BLOCK 5: Create temporary VM
+# BLOCK 5: Create temporary VM (simplified and more reliable)
 # ------------------------------------------------------------
 Write-Host "Creating temporary VM: $VmName"
+
 $securePassword = ConvertTo-SecureString $AdminPassword -AsPlainText -Force
 $credential = New-Object System.Management.Automation.PSCredential ($AdminUsername, $securePassword)
 
-$nic = New-AzNetworkInterface -Name "$VmName-nic" `
-                              -ResourceGroupName $TempResourceGroup `
-                              -Location $Location `
-                              -SubnetId $subnet.Id `
-                              -Force
+New-AzVM `
+    -ResourceGroupName $TempResourceGroup `
+    -Name $VmName `
+    -Location $Location `
+    -Image $sourceImageId `
+    -Size $VmSize `
+    -Credential $credential `
+    -SubnetId $subnet.Id `
+    -Specialized `
+    -ErrorAction Stop
 
-$vmConfig = New-AzVMConfig -VMName $VmName -VMSize $VmSize
-$vmConfig = Set-AzVMOperatingSystem -VM $vmConfig -Windows -ComputerName $VmName -Credential $credential -ProvisionVMAgent
-$vmConfig = Set-AzVMSourceImage -VM $vmConfig -Id $sourceImageId
-$vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id
-$vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig -Disable
-
-New-AzVM -ResourceGroupName $TempResourceGroup -Location $Location -VM $vmConfig
 Write-Host "Temporary VM created."
 "VM created" | Out-File $LogFile -Append
 
