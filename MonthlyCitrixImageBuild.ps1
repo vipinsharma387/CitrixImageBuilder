@@ -1,5 +1,5 @@
 # ============================================================
-# Citrix MCS Specialized Image Build Script (Simplified)
+# Citrix MCS Specialized Image Build Script (Simplified + Fixed)
 # Tasks: Windows Update + Temporary File Cleanup only
 # ============================================================
 
@@ -11,24 +11,23 @@ $SubscriptionId       = "d5a2bd94-cd2f-4df6-8755-35b5f6da3f17"
 $GalleryResourceGroup = "RG-Citrix-Images"
 $GalleryName          = "Citrix_Gallery"
 $ImageDefinitionName  = "Win11_Optimized_Fslogix"
-$SourceImageVersion   = "1.2.0"          # Source version
-$NewImageVersion      = "1.3.0"          # New version to create
+$SourceImageVersion   = "1.2.0"
+$NewImageVersion      = "1.3.0"
 
 $TempResourceGroup    = "CitrixImageBuildRG"
 $Location             = "CentralIndia"
 $VmSize               = "Standard_B2ms"
 $VmName               = "TempImageBuild-$(Get-Date -Format 'yyyyMMdd-HHmm')"
 
-$NetworkResourceGroup = "RG-Hybrid-Lab"
-$VNetName             = "vNet-HybridLab"    
-$SubnetName           = "IdentitySubnet" 
+$NetworkResourceGroup = "RG-HybridLab"
+$VNetName             = "vNet-HybridLab"     # <-- Change this
+$SubnetName           = "IdentitySubnet"   # <-- Change this
 
 $AdminUsername        = "ctxadmin"
 $AdminPassword        = "Myhomelab@2026"
 
-$LogFile              = "D:\Study\LAB2026\CitrixImageBuild\ImageBuild-$(Get-Date -Format 'yyyyMMdd-HHmm').log"
+$LogFile              = "D:\Study\LAB2026\CitrixImageBuild\Log\ImageBuild-$(Get-Date -Format 'yyyyMMdd-HHmm').log"
 
-# Create log folder if needed
 $logFolder = Split-Path $LogFile -Parent
 if (-not (Test-Path $logFolder)) {
     New-Item -ItemType Directory -Path $logFolder -Force | Out-Null
@@ -71,34 +70,31 @@ Write-Host "Network ready."
 "Network ready" | Out-File $LogFile -Append
 
 # ------------------------------------------------------------
-# BLOCK 5: Create temporary VM (compatible method)
+# BLOCK 5: Create temporary VM from specialized image
 # ------------------------------------------------------------
 Write-Host "Creating temporary VM: $VmName"
 
-$securePassword = ConvertTo-SecureString $AdminPassword -AsPlainText -Force
-$credential = New-Object System.Management.Automation.PSCredential ($AdminUsername, $securePassword)
-
-# Step 1: Create the Network Interface first
+# 1. Create the Network Interface
 Write-Host "Creating network interface..."
-$nic = New-AzNetworkInterface -Name "$VmName-nic" `
-                              -ResourceGroupName $TempResourceGroup `
-                              -Location $Location `
-                              -SubnetId $subnet.Id `
-                              -Force
+$nic = New-AzNetworkInterface `
+    -Name "$VmName-nic" `
+    -ResourceGroupName $TempResourceGroup `
+    -Location $Location `
+    -SubnetId $subnet.Id `
+    -Force
 
-# Step 2: Build VM configuration and attach the NIC
+# 2. Build VM configuration (NO OSProfile for specialized image)
 Write-Host "Building VM configuration..."
 $vmConfig = New-AzVMConfig -VMName $VmName -VMSize $VmSize
-$vmConfig = Set-AzVMOperatingSystem -VM $vmConfig -Windows -ComputerName $VmName -Credential $credential -ProvisionVMAgent
 $vmConfig = Set-AzVMSourceImage -VM $vmConfig -Id $sourceImageId
-$vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id
+$vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $nic.Id -Primary
 $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig -Disable
 
-# Step 3: Create the VM
+# 3. Create the VM
 Write-Host "Creating the VM..."
 New-AzVM -ResourceGroupName $TempResourceGroup -Location $Location -VM $vmConfig -ErrorAction Stop
 
-Write-Host "Temporary VM created."
+Write-Host "Temporary VM created successfully."
 "VM created" | Out-File $LogFile -Append
 
 # ------------------------------------------------------------
@@ -129,18 +125,15 @@ Write-Host "Running Windows Update and temp file cleanup..."
 $customizeScript = @'
 Write-Output "Starting Windows Update and cleanup..."
 
-# Install PSWindowsUpdate if missing
 if (-not (Get-Module -ListAvailable PSWindowsUpdate)) {
     Install-PackageProvider -Name NuGet -Force | Out-Null
     Install-Module PSWindowsUpdate -Force -Scope AllUsers
 }
 Import-Module PSWindowsUpdate
 
-# Install Windows updates
 Write-Output "Installing Windows updates..."
 Get-WindowsUpdate -AcceptAll -Install -IgnoreReboot
 
-# Clean temporary files
 Write-Output "Cleaning temporary files..."
 Remove-Item -Path "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -Path "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
@@ -189,7 +182,7 @@ Write-Host "New image version created."
 # ------------------------------------------------------------
 Write-Host "Cleaning up temporary VM..."
 Remove-AzVM -ResourceGroupName $TempResourceGroup -Name $VmName -Force -ErrorAction SilentlyContinue
-Remove-AzNetworkInterface -ResourceGroupName $TempResourceGroup -Name "$VmName-nic" -Force -ErrorAction SilentlyContinue
+Get-AzNetworkInterface -ResourceGroupName $TempResourceGroup | Where-Object { $_.Name -like "*$VmName*" } | Remove-AzNetworkInterface -Force -ErrorAction SilentlyContinue
 Get-AzDisk -ResourceGroupName $TempResourceGroup | Where-Object { $_.Name -like "*$VmName*" } | Remove-AzDisk -Force -ErrorAction SilentlyContinue
 
 Write-Host "Cleanup finished."
